@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Petitions;
 use App\Models\Categories;
-use App\Models\Files;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -14,6 +13,7 @@ use Exception;
 
 class PetitionController extends Controller
 {
+    // --- MÉTODOS AUXILIARES PARA RESPUESTAS JSON ---
     private function sendResponse($data, $message, $code = 200) {
         return response()->json([
             'success' => true,
@@ -33,21 +33,23 @@ class PetitionController extends Controller
         return response()->json($response, $code);
     }
 
-
+    // 1. LISTAR PETICIONES (PÚBLICO)
     public function index(Request $request)
     {
         try {
-            $petitions = Petitions::with(['user', 'categoria', 'files'])->get();
+            // Cargamos la categoría y el usuario. Ya no cargamos 'files' porque es una columna
+            $petitions = Petitions::with(['user', 'category'])->get(); 
             return $this->sendResponse($petitions, 'Peticiones recuperadas con éxito');
         } catch (Exception $e) {
             return $this->sendError('Error al recuperar peticiones', $e->getMessage(), 500);
         }
     }
 
+    // 2. MOSTRAR UNA PETICIÓN (PÚBLICO)
     public function show($id)
     {
         try {
-            $petition = Petitions::with(['user', 'categoria', 'files'])->find($id);
+            $petition = Petitions::with(['user', 'category'])->find($id);
             if (is_null($petition)) {
                 return $this->sendError('Petición no encontrada');
             }
@@ -57,6 +59,7 @@ class PetitionController extends Controller
         }
     }
 
+    // 3. CREAR PETICIÓN (PRIVADO)
     public function store(Request $request)
     {
         $input = $request->all();
@@ -65,8 +68,8 @@ class PetitionController extends Controller
             'titulo'       => 'required|max:255',
             'descripcion'  => 'required',
             'destinatario' => 'required',
-            'categoria_id' => 'required|exists:categories,id',
-            'file'         => 'required|file|mimes:jpg,jpeg,png,pdf|max:4096',
+            'categoria_id' => 'required|exists:categories,id', // Ojo: tabla 'categories'
+            'file'         => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240', // 10MB Máx
         ]);
 
         if ($validator->fails()) {
@@ -74,102 +77,97 @@ class PetitionController extends Controller
         }
 
         try {
-            DB::beginTransaction();
+            // Asignamos datos automáticos
+            $input['user_id'] = Auth::id();
+            $input['firmantes'] = 0;
+            $input['estado'] = 'pendiente';
 
-            // 1. Crear Petición
-            $petition = new Petitions($input);
-            $petition->user_id = Auth::id();
-            $petition->firmantes = 0;
-            $petition->estado = 'pendiente';
-            $petition->save();
-
+            // --- AQUÍ ESTÁ LA CORRECCIÓN DE LA IMAGEN ---
             if ($request->hasFile('file')) {
-                $file = $request->file('file');
-                $path = $file->store('peticiones', 'public');
-
-                $fileModel = new Files();
-                $fileModel->name = $file->getClientOriginalName();
-                $fileModel->file_path = $path;
-                $fileModel->petition_id = $petition->id;
-                $fileModel->save();
+                // 1. Guarda el archivo en la carpeta 'public/peticiones'
+                $path = $request->file('file')->store('peticiones', 'public');
+                // 2. Guarda la ruta (ej: peticiones/foto.jpg) en el array
+                $input['file'] = $path;
             }
+            // ---------------------------------------------
 
-            DB::commit();
-            
-            return $this->sendResponse($petition->load('files'), 'Petición creada con éxito', 201);
+            $petition = Petitions::create($input);
+
+            return $this->sendResponse($petition, 'Petición creada con éxito', 201);
 
         } catch (Exception $e) {
-            DB::rollBack();
             return $this->sendError('Error al crear la petición', $e->getMessage(), 500);
         }
     }
 
+    // 4. ACTUALIZAR PETICIÓN (PRIVADO - DUEÑO)
     public function update(Request $request, $id)
     {
         try {
             $petition = Petitions::find($id);
             if (!$petition) return $this->sendError('Petición no encontrada');
 
-            if ($request->user()->cannot('update', $petition)) {
-                return $this->sendError('No autorizado para editar esta petición', [], 403);
+            // Verificar si el usuario es el dueño (Opcional si usas Policies)
+            if ($petition->user_id !== Auth::id()) {
+                return $this->sendError('No autorizado', [], 403);
             }
 
             $input = $request->all();
             
+            // Validación (File es nullable al editar)
             $validator = Validator::make($input, [
                 'titulo'       => 'required|max:255',
                 'descripcion'  => 'required',
                 'destinatario' => 'required',
                 'categoria_id' => 'required|exists:categories,id',
-                'file'         => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:4096',
+                'file'         => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:80240',
             ]);
 
             if ($validator->fails()) {
                 return $this->sendError('Error de validación', $validator->errors(), 422);
             }
 
+            // Actualizamos campos de texto
             $petition->titulo = $input['titulo'];
             $petition->descripcion = $input['descripcion'];
             $petition->destinatario = $input['destinatario'];
             $petition->categoria_id = $input['categoria_id'];
+
+            // --- LÓGICA DE ACTUALIZAR IMAGEN ---
+            if ($request->hasFile('file')) {
+                // 1. Borrar imagen vieja si existe
+                if ($petition->file) {
+                    Storage::disk('public')->delete($petition->file);
+                }
+                // 2. Subir nueva
+                $path = $request->file('file')->store('peticiones', 'public');
+                $petition->file = $path;
+            }
+            // -----------------------------------
+
             $petition->save();
 
-            if ($request->hasFile('file')) {
-                foreach ($petition->files as $oldFile) {
-                    Storage::disk('public')->delete($oldFile->file_path);
-                    $oldFile->delete();
-                }
-
-                $file = $request->file('file');
-                $path = $file->store('peticiones', 'public');
-
-                $newFile = new Files();
-                $newFile->name = $file->getClientOriginalName();
-                $newFile->file_path = $path;
-                $newFile->petition_id = $petition->id;
-                $newFile->save();
-            }
-
-            return $this->sendResponse($petition->load('files'), 'Petición actualizada con éxito');
+            return $this->sendResponse($petition, 'Petición actualizada con éxito');
 
         } catch (Exception $e) {
             return $this->sendError('Error al actualizar', $e->getMessage(), 500);
         }
     }
 
+    // 5. BORRAR PETICIÓN
     public function destroy(Request $request, $id)
     {
         try {
             $petition = Petitions::find($id);
             if (!$petition) return $this->sendError('Petición no encontrada');
 
-            // POLICY: Verificar dueño
-            if ($request->user()->cannot('delete', $petition)) {
-                return $this->sendError('No autorizado para eliminar', [], 403);
+            if ($petition->user_id !== Auth::id()) {
+                return $this->sendError('No autorizado', [], 403);
             }
 
-            foreach ($petition->files as $file) {
-                Storage::disk('public')->delete($file->file_path);
+            // Borrar la imagen del disco para limpiar basura
+            if ($petition->file) {
+                Storage::disk('public')->delete($petition->file);
             }
             
             $petition->delete();
@@ -181,12 +179,13 @@ class PetitionController extends Controller
         }
     }
 
+    // 6. LISTAR MIS PETICIONES
     public function listMine()
     {
         try {
             $user = Auth::user();
             $petitions = Petitions::where('user_id', $user->id)
-                ->with(['user', 'categoria', 'files'])
+                ->with(['category']) // Quitamos 'files'
                 ->get();
             return $this->sendResponse($petitions, 'Mis peticiones recuperadas');
         } catch (Exception $e) {
@@ -194,36 +193,37 @@ class PetitionController extends Controller
         }
     }
 
+    // 7. FIRMAR PETICIÓN
     public function firmar(Request $request, $id)
     {
         try {
             $petition = Petitions::findOrFail($id);
             $user = Auth::user();
 
+            // Verificar si ya firmó (Tabla pivote 'petition_user' o similar)
+            // Asumimos que tienes la relación 'firmas' en el modelo Petition
             if ($petition->firmas()->where('user_id', $user->id)->exists()) {
                 return $this->sendError('Ya has firmado esta petición', [], 403);
             }
 
-            DB::transaction(function () use ($petition, $user) {
-                $petition->firmas()->attach($user->id);
-                $petition->increment('firmantes');
-            });
+            // Guardar firma y sumar contador
+            $petition->firmas()->attach($user->id);
+            $petition->increment('firmantes');
             
             return $this->sendResponse($petition, 'Petición firmada con éxito', 201);
 
         } catch (Exception $e) {
-            return $this->sendError('No se pudo firmar la petición', $e->getMessage(), 500);
+            return $this->sendError('No se pudo firmar', $e->getMessage(), 500);
         }
     }
 
+    // 8. CAMBIAR ESTADO (ADMIN)
     public function cambiarEstado(Request $request, $id)
     {
         try {
             $petition = Petitions::findOrFail($id);
-
             $petition->estado = 'aceptada';
             $petition->save();
-
             return $this->sendResponse($petition, 'Estado actualizado');
         } catch (Exception $e) {
             return $this->sendError('Error al cambiar estado', $e->getMessage(), 500);

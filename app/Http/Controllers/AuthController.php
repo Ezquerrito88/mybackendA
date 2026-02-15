@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
 {
-
+    // ... (El método register déjalo como estaba) ...
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -24,27 +24,23 @@ class AuthController extends Controller
             return response()->json($validator->errors(), 422);
         }
 
-        try {
-            $user = User::create([
-                'name' => $request->name,
-                'email' => $request->email,
-                'password' => Hash::make($request->password),
-            ]);
+        $user = User::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+        ]);
 
-            return response()->json([
-                'message' => 'Usuario registrado correctamente',
-                'user' => $user
-            ], 201);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Error al registrar usuario'], 500);
-        }
+        return response()->json([
+            'message' => 'Usuario registrado correctamente',
+            'user' => $user
+        ], 201);
     }
 
     public function login(Request $request)
     {
         $credentials = $request->only('email', 'password');
 
-        if (! $token = Auth::attempt($credentials)) {
+        if (! $token = auth()->guard('api')->attempt($credentials)) {
             return response()->json(['error' => 'Credenciales incorrectas'], 401);
         }
 
@@ -53,32 +49,27 @@ class AuthController extends Controller
 
     public function me()
     {
-        return response()->json(Auth::user());
+        return response()->json(auth()->guard('api')->user());
     }
 
     public function logout()
     {
-        Auth::logout();
+        auth()->guard('api')->logout();
         return response()->json(['message' => 'Sesión cerrada correctamente']);
     }
 
     public function refresh()
     {
-        try {
-            return $this->respondWithToken(Auth::refresh());
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'No se pudo refrescar el token'], 401);
-        }
+        return $this->respondWithToken(auth()->guard('api')->refresh());
     }
-
 
     protected function respondWithToken($token)
     {
         return response()->json([
             'access_token' => $token,
             'token_type' => 'bearer',
-            'expires_in' => Auth::factory()->getTTL() * 60,
-            'user' => Auth::user()
+            'expires_in' => auth()->guard('api')->factory()->getTTL() * 60,
+            'user' => auth()->guard('api')->user()
         ]);
     }
 }

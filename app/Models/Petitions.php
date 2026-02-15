@@ -16,6 +16,7 @@ class Petitions extends Model
         'estado',
         'firmantes',
         'user_id',
+        'file',
         'categoria_id',
     ];
 
@@ -24,7 +25,7 @@ class Petitions extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function categoria()
+    public function category()
     {
         
         return $this->belongsTo(Categories::class, 'categoria_id');
