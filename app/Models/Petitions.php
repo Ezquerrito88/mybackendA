@@ -27,7 +27,7 @@ class Petitions extends Model
 
     public function category()
     {
-        
+
         return $this->belongsTo(Categories::class, 'categoria_id');
     }
 
@@ -35,6 +35,7 @@ class Petitions extends Model
     {
         return $this->hasMany(Files::class, 'petition_id');
     }
+
 
     public function firmas()
     {
