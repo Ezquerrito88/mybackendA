@@ -89,14 +89,14 @@ class PetitionController extends Controller
 
             $petition = Petitions::create($input);
 
-            // ✅ PROCESAR MÚLTIPLES ARCHIVOS CON NOMBRE
+            
             if ($request->hasFile('files')) {
                 foreach ($request->file('files') as $file) {
                     $path = $file->store('peticiones', 'public');
 
                     $petition->files()->create([
                         'file_path' => $path,
-                        'name' => $file->getClientOriginalName()  // ← FIJA EL ERROR SQL
+                        'name' => $file->getClientOriginalName()
                     ]);
                 }
             }
