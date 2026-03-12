@@ -36,19 +36,32 @@ class PetitionController extends Controller
         return response()->json($response, $code);
     }
 
-    // 1. LISTAR PETICIONES ✅ CORREGIDO
+    // 1. Listar peticiones
     public function index(Request $request)
     {
         try {
-            // AÑADIDO 'files' a las relaciones
-            $petitions = Petitions::with(['user', 'category', 'files'])->get();
+            $query = Petitions::with(['user', 'category', 'files']);
+
+            $estado = $request->query('estado');
+            if ($estado && $estado !== 'todas') {
+                $query->where('estado', $estado);
+            }
+
+            $categoriaId = $request->query('categoria_id');
+            if ($categoriaId) {
+                $query->where('categoria_id', $categoriaId);
+            }
+
+            $petitions = $query->latest()->paginate(6);
+
             return $this->sendResponse($petitions, 'Peticiones recuperadas con éxito');
         } catch (Exception $e) {
             return $this->sendError('Error al recuperar peticiones', $e->getMessage(), 500);
         }
     }
 
-    // 2. MOSTRAR UNA PETICIÓN
+
+    // 2. Mostrar una petición
     public function show($id)
     {
         try {
@@ -62,7 +75,7 @@ class PetitionController extends Controller
         }
     }
 
-    // 3. CREAR PETICIÓN
+    // 3. Crear petición
     public function store(Request $request)
     {
         $input = $request->all();
@@ -107,7 +120,7 @@ class PetitionController extends Controller
         }
     }
 
-    // 4. ACTUALIZAR PETICIÓN
+    // 4. Actualizar petición
     public function update(Request $request, $id)
     {
         try {
@@ -151,11 +164,10 @@ class PetitionController extends Controller
         }
     }
 
-    // 5. BORRAR PETICIÓN
+    // 5. Borrar petición
     public function destroy(Request $request, $id)
     {
         try {
-            // Cargamos la petición con sus archivos
             $petition = Petitions::with('files')->find($id);
             if (!$petition) return $this->sendError('Petición no encontrada');
 
@@ -163,19 +175,16 @@ class PetitionController extends Controller
                 return $this->sendError('No autorizado', [], 403);
             }
 
-            // Borramos el archivo antiguo si lo tuviera (para compatibilidad)
             if ($petition->file) {
                 Storage::disk('public')->delete($petition->file);
             }
 
-            // Borramos los archivos múltiples del disco físico
             if ($petition->files->count() > 0) {
                 foreach ($petition->files as $file) {
                     Storage::disk('public')->delete($file->file_path);
                 }
             }
 
-            // Eliminamos la petición (los registros de files se borrarán si hay onDelete('cascade') en la migración)
             $petition->delete();
 
             return $this->sendResponse(null, 'Petición eliminada con éxito');
@@ -184,13 +193,13 @@ class PetitionController extends Controller
         }
     }
 
-    // 6. LISTAR MIS PETICIONES
+    // 6. Listar mis peticiones
     public function listMine()
     {
         try {
             $user = Auth::user();
             $petitions = Petitions::where('user_id', $user->id)
-                ->with(['category', 'files']) // AÑADIDO 'files'
+                ->with(['category', 'files'])
                 ->get();
             return $this->sendResponse($petitions, 'Mis peticiones recuperadas');
         } catch (Exception $e) {
@@ -198,7 +207,7 @@ class PetitionController extends Controller
         }
     }
 
-    // 7. FIRMAR PETICIÓN
+    // 7. Firmar petición
     public function firmar(Request $request, $id)
     {
         try {
@@ -218,7 +227,7 @@ class PetitionController extends Controller
         }
     }
 
-    // 8. CAMBIAR ESTADO
+    // 8. Cambiar estado
     public function cambiarEstado(Request $request, $id)
     {
         try {
