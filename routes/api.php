@@ -21,5 +21,6 @@ Route::middleware('auth:api')->group(function () {
     Route::post('peticiones', [PetitionController::class, 'store']);
     Route::put('peticiones/{id}', [PetitionController::class, 'update']);
     Route::delete('peticiones/{id}', [PetitionController::class, 'destroy']);
+    Route::get('mispeticiones', [PetitionController::class, 'listMine']);
     Route::post('peticiones/firmar/{id}', [PetitionController::class, 'firmar']);
 });

@@ -89,7 +89,7 @@ class PetitionController extends Controller
 
             $petition = Petitions::create($input);
 
-            
+
             if ($request->hasFile('files')) {
                 foreach ($request->file('files') as $file) {
                     $path = $file->store('peticiones', 'public');
@@ -107,7 +107,7 @@ class PetitionController extends Controller
         }
     }
 
-    // 4. ACTUALIZAR PETICIÓN (pendiente de migrar a múltiples archivos)
+    // 4. ACTUALIZAR PETICIÓN
     public function update(Request $request, $id)
     {
         try {
@@ -118,13 +118,11 @@ class PetitionController extends Controller
                 return $this->sendError('No autorizado', [], 403);
             }
 
-            $input = $request->all();
-
-            $validator = Validator::make($input, [
-                'titulo'       => 'required|max:255',
-                'descripcion'  => 'required',
-                'destinatario' => 'required',
-                'categoria_id' => 'required|exists:categories,id',
+            $validator = Validator::make($request->all(), [
+                'titulo'       => 'sometimes|max:255',
+                'descripcion'  => 'sometimes',
+                'destinatario' => 'sometimes',
+                'categoria_id' => 'sometimes|exists:categories,id',
                 'file'         => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:80240',
             ]);
 
@@ -132,10 +130,10 @@ class PetitionController extends Controller
                 return $this->sendError('Error de validación', $validator->errors(), 422);
             }
 
-            $petition->titulo = $input['titulo'];
-            $petition->descripcion = $input['descripcion'];
-            $petition->destinatario = $input['destinatario'];
-            $petition->categoria_id = $input['categoria_id'];
+            $petition->titulo       = $request->input('titulo', $petition->titulo);
+            $petition->descripcion  = $request->input('descripcion', $petition->descripcion);
+            $petition->destinatario = $request->input('destinatario', $petition->destinatario);
+            $petition->categoria_id = $request->input('categoria_id', $petition->categoria_id);
 
             if ($request->hasFile('file')) {
                 if ($petition->file) {
@@ -153,7 +151,7 @@ class PetitionController extends Controller
         }
     }
 
-    // 5. BORRAR PETICIÓN ✅ CORREGIDO (Borra archivos múltiples físicos)
+    // 5. BORRAR PETICIÓN
     public function destroy(Request $request, $id)
     {
         try {
@@ -186,7 +184,7 @@ class PetitionController extends Controller
         }
     }
 
-    // 6. LISTAR MIS PETICIONES ✅ CORREGIDO
+    // 6. LISTAR MIS PETICIONES
     public function listMine()
     {
         try {
