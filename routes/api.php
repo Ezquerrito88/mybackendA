@@ -7,6 +7,7 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\Admin\PetitionController as AdminPetitionController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Admin\CategoryController as AdminCategoryController;
+use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 
 Route::post('login', [AuthController::class, 'login']);
 Route::post('register', [AuthController::class, 'register']);
@@ -30,6 +31,9 @@ Route::middleware('auth:api')->group(function () {
 
 // ─── PANEL DE ADMINISTRACIÓN ─────────────────────────────────────────────────
 Route::prefix('admin')->middleware(['auth:api', 'isAdmin'])->group(function () {
+
+    // Dashboard stats
+    Route::get('stats', [AdminDashboardController::class, 'stats']);
 
     // Peticiones CRUD + cambio de estado
     Route::get('peticiones',                  [AdminPetitionController::class, 'index']);
